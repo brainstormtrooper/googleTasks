@@ -57,7 +57,8 @@ class Backend(PeriodicImportBackend):
     _general_description = {
         GenericBackend.BACKEND_NAME: "backend_gtask",
         GenericBackend.BACKEND_HUMAN_NAME: _("Google Tasks"),
-        GenericBackend.BACKEND_AUTHORS: ["Madhumitha Viswanathan",
+        GenericBackend.BACKEND_AUTHORS: ["Rick Opper",
+        				 "Madhumitha Viswanathan",
                                          "Izidor Matušov",
                                          "Luca Invernizzi"],
         GenericBackend.BACKEND_TYPE: GenericBackend.TYPE_READWRITE,
