@@ -225,26 +225,26 @@ class Backend(PeriodicImportBackend):
         for taskslist in tasklists['items']:
             #print 'checking '+str(taskslist['title'])
             #Loop through all the tasks of a tasklist
-            gtasklist = self.service.tasks().list(tasklist=taskslist['id']).execute()
+            try:
+                gtasklist = self.service.tasks().list(tasklist=taskslist['id']).execute()
 
-            Log.debug("[ii] get_tasklist : checking google tasklist : " + taskslist['title'] + " for task " + gtaskID)
-            if 'items' in gtasklist:
-                for gtask in gtasklist['items']:
-                    #print '\nchecking - '+str(gtask['title'])
-                    #print gtask['id']
-                    #print '\n'
-                    #print task
-                    Log.debug('[ii] get_tasklist : Comparing gtasklist item ID : ' + str(gtask['id']) + ' with gtask (?) : ' + str(gtaskID))
-                    # CHANGES: replace cmp() with ==... "not" will pass if the left item is LESS than the right... 
-                    # if not cmp(gtask['id'], task):
-                    if gtask['id'] == gtaskID:
-                        #
-                        # They are the same...
-                        # 
-                        Log.debug('[ii] get_tasklist : the tassklist for ' + str(gtask['title']) + ' is - ' + str(taskslist['title']))
-                        #return taskslist['id']        
-                        # CHANGES: just give the whole thing so we can use the title and the id...
-                        return taskslist
+                #Log.debug("[ii] get_tasklist : checking google tasklist : " + taskslist['title'] + " for task " + gtaskID)
+                if 'items' in gtasklist:
+                    for gtask in gtasklist['items']:
+
+                        # Log.debug('[ii] get_tasklist : Comparing gtasklist item ID : ' + str(gtask['id']) + ' with gtask (?) : ' + str(gtaskID))
+                        # CHANGES: replace cmp() with ==... "not" will pass if the left item is LESS than the right... 
+                        # if not cmp(gtask['id'], task):
+                        if gtask['id'] == gtaskID:
+                            #
+                            # They are the same...
+                            # 
+                            Log.debug('[ii] get_tasklist : the tassklist for ' + str(gtask['title']) + ' is - ' + str(taskslist['title']))
+                            #return taskslist['id']        
+                            # CHANGES: just give the whole thing so we can use the title and the id...
+                            return taskslist
+            except:
+                Log.debug('[ee] get_tasklist : failed to get a list for ' + tasklist['id'])
         Log.debug('[ww] get_tasklist : No match found for '+gtask['title'] +' - '+gtask['id'])
         return None
         
@@ -263,7 +263,9 @@ class Backend(PeriodicImportBackend):
             gtasklist = self.service.tasks().list(tasklist=taskslist['id']).execute()
             
             if 'items' in gtasklist:
+                Log.debug('TASKLIST ITEMS >>> \n' + str(gtasklist))
                 for gtask in gtasklist['items']:
+                
                     self._process_gtask(gtask['id'], taskslist)
 
                     #
@@ -325,16 +327,9 @@ class Backend(PeriodicImportBackend):
             try:
                 gtaskID = self.sync_engine.get_remote_id(tid)
                 Log.debug('[ii] ggl task to delete is ' + gtaskID )
-            except KeyError:
-                Log.debug('[ww] Failed to find ggl task for local ID ' + tid )
-                # return
-            #the remote task might have been already deleted manually (or by another app)
-            try:
-                Log.debug('[ii] trying to delete ggl task ... may not have a ggl ID')
                 gtasklist=self.get_tasklist(gtaskID)
                 self.service.tasks().delete(tasklist=gtasklist['id'], task=gtaskID).execute()
-            except Exception, e:
-                #FIXME:need to see if disconnected (?)...
+            except KeyError:
                 Log.debug('[ww] Failed to delete ggl taskfor local ID ' + tid + ' ... it may not exist.')
                 Log.error(e)
             self.break_relationship(local_id = tid)
@@ -352,8 +347,10 @@ class Backend(PeriodicImportBackend):
             self.cancellation_point()
             
             # tid = self.sync_engine.get_local_id(gtaskID)
+            
             rids = self.sync_engine.get_all_remote()
             if gtaskID in rids:
+                
                 Log.debug('[ww] gtask ' + str(gtaskID) + ' already exists in remote ids')
             
             is_syncable = self._google_task_is_syncable(gtaskID)
@@ -374,8 +371,18 @@ class Backend(PeriodicImportBackend):
                 gtasklist=self.get_tasklist(gtaskID)
             
             if action == SyncEngine.ADD:
-                tid = str(uuid.uuid4())
-                task = self.datastore.task_factory(tid)
+                if gtaskID in rids:
+                    try:
+                        tid = self.sync_engine.get_local_id(gtaskID)
+                        Log.debug('[ww] Why am I getting ADD if the task exists as local tid : ' + str(tid))
+                        task = self.datastore.get_task(tid)
+                    except KeyError:
+                        Log.debug('[ww] remote id exists, but no local ID for gtask ' + gtaskID )
+                        tid = str(uuid.uuid4())
+                        task = self.datastore.task_factory(tid)
+                else:    
+                    tid = str(uuid.uuid4())
+                    task = self.datastore.task_factory(tid)
                 #
                 # _populate_task uses the gtask id to get the actual gtask... so we only need the ID here...
                 #
@@ -434,7 +441,7 @@ class Backend(PeriodicImportBackend):
             action, gtask_id = self.sync_engine.analyze_local_id(tid, \
                            self.datastore.has_task(tid), self._google_task_exists, \
                                                         is_syncable)
-            Log.debug("[ii] set task (gtg) : processing gtg (%s, %d)" % (action, is_syncable))
+            Log.debug('[ii] set task (gtg) : processing gtg "' + task.title + '" (' + action + ', ' + str(is_syncable) + ')')
             if action == SyncEngine.ADD:
                 
                 try:
@@ -622,7 +629,17 @@ class Backend(PeriodicImportBackend):
         
         
         #task.set_only_these_tags(extract_tags_from_text(text))
-        title = gtask_instance['title']
+        
+        #
+        # CHANGES: ggl tasks or the my Android app create a "(No Title)" task that breaks import... need to fix that...
+        #
+        try:
+            title = gtask_instance['title']
+        except:
+            title = "No Title"
+        if (title is None) or (title ==''):
+            title = "No Title"
+        
         task.set_title(title)
         
 
@@ -673,6 +690,10 @@ class Backend(PeriodicImportBackend):
             Log.debug("[ii] setting local due date to " + gtask_instance['due'] + " for task " + gtask_instance['id'])
             task.set_due_date(self._time_gtask_to_date(gtask_instance['due']))   
             
+        #
+        # tags
+        #
+        
         for t in task.tags:
             Log.debug("[ii] " + task.title + " has tag " + t)
             if ('@gtl_' in t) or ('gtl_' in t):
@@ -680,7 +701,9 @@ class Backend(PeriodicImportBackend):
                 
         for word in text.split():
             if (word.startswith('@gtl_')) or (word.startswith('gtl_')):
+                Log.debug("[ii] Populate task : found tag text " + word + " in task  " + task.title)
                 if word != '@gtl_' + self.get_clean_tag_from_title(gtasklist['title']):
+                    Log.debug("[ii] Populate task : trying to remove tag text " + word + " from task  " + task.title)
                     word = ''
         
         task.set_text(text)
@@ -744,7 +767,7 @@ class Backend(PeriodicImportBackend):
         for t in task.tags:
             Log.debug("[ii] " + task.title + " has tag " + t)
             if ('@gtl_' in t) or ('gtl_' in t):
-                if listsetbytag is True:
+                if haslisttag is True:
                     task.remove_tag(t)
                 elif 'Not_Stored' in t:
                     task.remove_tag(t)
@@ -820,23 +843,27 @@ class Backend(PeriodicImportBackend):
         listtag = '@gtl_' + self.get_clean_tag_from_title(gtasklist['title'])
         
         for t in task.tags:
-            Log.debug("[ii] Update gtask : " + task.title + " has tag " + t)
+            Log.debug('[ii] Update gtask : "' + task.title + '" has tag ' + t)
             if ('@gtl_' in t) or ('gtl_' in t):
                 Log.debug("[ii] removing tasklist tag " + t + " from task " + task.title)
                 task.remove_tag(t)
                  
-        task.add_tag(listtag)
+       
         Log.debug("[ii] Update gtask : checking task text for bad list tags in task " + task.title)
         content = task.get_excerpt(strip_subtasks=False)
         for word in content.split():
             if (word.startswith('@gtl_')) or (word.startswith('gtl_')):
+                Log.debug("[ii] Update gtask : found tag text " + word + " in task  " + task.title)
+                """
                 if word != '@gtl_' + self.get_clean_tag_from_title(gtasklist['title']):
                     Log.debug("[ii] Update gtask : trying to get rid of tag text " + word + " in task  " + task.title)
                     word = ''
+                """
+                Log.debug("[ii] Update gtask : trying to get rid of tag text " + word + " in task  " + task.title)
+                word = ''
         
         
-        
-        
+        task.add_tag(listtag)
         gtask['notes'] = content 
 
         
