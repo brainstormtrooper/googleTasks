@@ -586,7 +586,6 @@ class Backend(PeriodicImportBackend):
                     else:
                         time.sleep(1)
                         gtask = self.service.tasks().get(tasklist='@default', task=gtask_id).execute()
-                      
                     self._update_gtask(gtask, task)
                     meme.set_local_last_modified(task.get_modified())
                     meme.set_remote_last_modified(\
@@ -629,7 +628,7 @@ class Backend(PeriodicImportBackend):
     
     def strip_list_tags(self, task):
         for t in task.tags:
-            Log.debug('[ii] "' + task.title + '" has tag ' + t)
+            Log.debug('[ii] Update gtask : "' + task.title + '" has tag ' + t)
             if ('@gtl_' in t) or ('gtl_' in t):
                 Log.debug("[ii] removing tasklist tag " + t + " from task " + task.title)
                 task.remove_tag(t)
@@ -1001,8 +1000,8 @@ class Backend(PeriodicImportBackend):
         task = self.strip_list_tags(task)
         """
         if (newlisttag is not None) and (newlisttag != listtag):
-            tasklist = self.get_listID_from_tag(newlisttag)
-            kwargs['tasklist'] = tasklist
+            #tasklist = self.get_listID_from_tag(newlisttag)
+            #kwargs['tasklist'] = tasklist
             task.add_tag(newlisttag)
         else:
             task.add_tag(listtag)
@@ -1023,7 +1022,7 @@ class Backend(PeriodicImportBackend):
         
         if 'gparent' in task.attributes:
             if self.sync_engine.get_local_id(task.attributes['gparent']) not in task.parents:
-                Log.debug('[ii] we need to move the task "' + gtask['title'] + '" under a new gparent')
+                Log.debug('[ii] we need to move the task "' + gtask['title'] + '" under a new parent')
                 for p in task.parents:
                     if self.sync_engine.get_remote_id(p):
                         kwargs['parent'] = p
@@ -1033,8 +1032,7 @@ class Backend(PeriodicImportBackend):
                 for p in task.parents:
                     if self.sync_engine.get_remote_id(p):
                         kwargs['parent'] = p
-                    else:
-                        Log.debug('[ii] failed to move task under "' + gtask['parent'])
+            
         
         if ('parent' in kwargs) or ('previous' in kwargs) or (kwargs['tasklist'] != gtasklist['id']):
             

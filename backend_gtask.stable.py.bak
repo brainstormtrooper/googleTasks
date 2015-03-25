@@ -28,7 +28,7 @@ the terms of Apache License 2.0"""
 import os
 import httplib2
 import uuid
-import datetime, time
+import datetime
 import webbrowser
 import threading
 import json
@@ -231,7 +231,7 @@ class Backend(PeriodicImportBackend):
        
         # FIXME: this needs to be split into 2 functions - we may need to explicitly ask ggl if the task has been moved to a different list...
         # CHANGES: checks if the task list data is already stored with the local task.... no, not anymore, not safe...
-        
+        """
         try:
             tid = self.sync_engine.get_local_id(gtaskID)
             # if self.datastore.has_task(tid):
@@ -247,16 +247,14 @@ class Backend(PeriodicImportBackend):
             
             return taskslist
             
-        except Exception, e:
-            Log.error('[ee] Failed to get task lists from local task : ' + str(e))
-            pass
+        except:
+        """
             
         # Log.debug('[ii] Hunting for list containing gtask ' + gtaskID )
 
 
         #Loop through all the tasklists
         try:
-            time.sleep(1)
             tasklists=self.service.tasklists().list().execute()
         except Exception, e:
             Log.error('[ee] Failed to get task lists from Google : ' + str(e))
@@ -273,10 +271,9 @@ class Backend(PeriodicImportBackend):
                 #print 'checking '+str(taskslist['title'])
                 #Loop through all the tasks of a tasklist
                 try:
-                    time.sleep(1)
                     gtask_instance = self.service.tasks().get(tasklist=taskslist['id'], task=gtaskID).execute()
                     if 'id' in gtask_instance:
-                        Log.debug('[ii] the tassklist for ' + str(gtask_instance['title']) + ' is - ' + str(taskslist['title']))
+                        Log.debug('[ii] get_tasklist : the tassklist for ' + str(gtask_instance['title']) + ' is - ' + str(taskslist['title']))
                         return taskslist
                 except Exception, e:
                     pass
@@ -313,7 +310,6 @@ class Backend(PeriodicImportBackend):
         stored_task_ids = self.sync_engine.get_all_remote()
         gtask_ids = []
         #get all the tasklists
-        Log.debug('\n -*-*-*-*-*-*-*-*-*-*-*-\n' + str(self.datastore.get_all_tasks()) + '\n -*-*-*-*-*-*-*-*-*-*-*-*-*-*-*\n')
         try:
             tasklists=self.service.tasklists().list().execute()
         except Exception, e:
@@ -328,7 +324,6 @@ class Backend(PeriodicImportBackend):
                 #
                 if 'id' in taskslist:
                         try:
-                            time.sleep(1)
                             gtasklist = self.service.tasks().list(tasklist=taskslist['id']).execute()
                         except Exception, e:
                             Log.error('[ee] Failed to get tasklist "' + taskslist['title'] + '" from Google')
@@ -342,7 +337,7 @@ class Backend(PeriodicImportBackend):
                                     gtask['gtasklistID'] = taskslist['id']
                                     gtask['gtasklistTitle'] = taskslist['title']
                                     gtask['gtasklistDeftag'] = self.get_clean_tag_from_title(taskslist['title'])
-                                    Log.debug('[dd] Processing ggl task : ' + str(gtask) + '\n')
+
                                     self._process_gtask(**gtask)
 
                                     #
@@ -408,9 +403,8 @@ class Backend(PeriodicImportBackend):
                 gtaskID = self.sync_engine.get_remote_id(tid)
                 Log.debug('[ii] ggl task to delete is ' + gtaskID )
                 gtasklist=self.get_tasklist(gtaskID)
-                time.sleep(1)
                 self.service.tasks().delete(tasklist=gtasklist['id'], task=gtaskID).execute()
-            except Exception, e:
+            except KeyError:
                 Log.debug('[ww] Failed to delete ggl taskfor local ID ' + tid + ' ... it may not exist.')
                 Log.error(e)
             self.break_relationship(local_id = tid)
@@ -424,9 +418,6 @@ class Backend(PeriodicImportBackend):
         @param gtask: a gtask instance with list info (hopefully)...
         
         '''
-        if gtask['title'] == 'No Title':
-            return False
-        
         with self.datastore.get_backend_mutex():
             self.cancellation_point()
             
@@ -444,7 +435,7 @@ class Backend(PeriodicImportBackend):
             action, tid = self.sync_engine.analyze_remote_id(gtask['id'], \
                          self.datastore.has_task, \
                          self._google_task_exists(gtask['id']), is_syncable)
-            Log.debug('[ii] processing google task "' + gtask['title'] + '" (' + action + ', ' + str(is_syncable) + ')')
+            Log.debug('[ii] process gtask : processing google task "' + gtask['title'] + '" (' + action + ', ' + str(is_syncable) + ')')
             """
             if gtasklistID != '0':
                 gtasklist={}
@@ -488,8 +479,8 @@ class Backend(PeriodicImportBackend):
                 self.datastore.push_task(task)
 
             elif action == SyncEngine.REMOVE:
-                time.sleep(1)
-                self.service.tasks().delete(tasklist=gtask['gtasklistID'], task=gtask['id']).execute()
+                
+                self.service.tasks().delete(tasklist=gtsask['gtasklistID'], task=gtask['id']).execute()
                 self.break_relationship(local_id = tid)
                 try:
                     self.sync_engine.break_relationship(remote_id = gtask['id'])
@@ -525,7 +516,6 @@ class Backend(PeriodicImportBackend):
         
         '''
         
-            
         Log.debug('[dd] \n *********** set_task ' + str(task.get_title()) + ' ************* \n')
         # Skip if not authenticated
         if not self.authenticated:
@@ -539,14 +529,12 @@ class Backend(PeriodicImportBackend):
             action, gtask_id = self.sync_engine.analyze_local_id(tid, \
                            self.datastore.has_task(tid), self._google_task_exists, \
                                                         is_syncable)
-            Log.debug('[ii] (gtg) : processing gtg "' + task.title + '" (' + action + ', ' + str(is_syncable) + ')')
+            Log.debug('[ii] set task (gtg) : processing gtg "' + task.title + '" (' + action + ', ' + str(is_syncable) + ')')
             if action == SyncEngine.ADD:
-                if self.get_list_tag(task) is None:
-                    return
+                
                 try:
                     rid = self.sync_engine.get_remote_id(tid)
                     gtasklist = self.get_tasklist(rid)
-                    time.sleep(1)
                     gtask = self.service.tasks().get(tasklist=gtasklist['id'], task=rid).execute()
                     gtask['gtasklistID'] = gtasklist['id']
                     gtask['gtasklistTitle'] = gtasklist['title']
@@ -581,12 +569,9 @@ class Backend(PeriodicImportBackend):
                     # TODO: get the destination list from the gtl_x tag...
                     gtasklist = self.get_tasklist(gtask_id)
                     if gtasklist is not None:
-                        time.sleep(1)
                         gtask = self.service.tasks().get(tasklist=gtasklist['id'], task=gtask_id).execute()
                     else:
-                        time.sleep(1)
                         gtask = self.service.tasks().get(tasklist='@default', task=gtask_id).execute()
-                      
                     self._update_gtask(gtask, task)
                     meme.set_local_last_modified(task.get_modified())
                     meme.set_remote_last_modified(\
@@ -629,7 +614,7 @@ class Backend(PeriodicImportBackend):
     
     def strip_list_tags(self, task):
         for t in task.tags:
-            Log.debug('[ii] "' + task.title + '" has tag ' + t)
+            Log.debug('[ii] Update gtask : "' + task.title + '" has tag ' + t)
             if ('@gtl_' in t) or ('gtl_' in t):
                 Log.debug("[ii] removing tasklist tag " + t + " from task " + task.title)
                 task.remove_tag(t)
@@ -648,7 +633,7 @@ class Backend(PeriodicImportBackend):
         tag = '@gtl_' + title.replace(' ', '_')
         return tag
     
-    def move_gtask(self, **kwargs):
+    def move_gtask(self, gtask, **kwargs):
         """
         Moves the given task id to a different list by ID
         
@@ -659,7 +644,6 @@ class Backend(PeriodicImportBackend):
         @returns gtask_instance
         
         """
-	"""
         if 'tasklist' in kwargs:
             try:
                 self.service.tasks().delete(tasklist=gtask['gtasklistID'], task=gtask['id']).execute()
@@ -667,33 +651,15 @@ class Backend(PeriodicImportBackend):
             except Exception, e:
                 Log.error('[ee] Failed to move task : ' + str(e))
                 return None
-        """
+        
         try:
-            args = {k:v for (k,v) in kwargs.items() if k in 'parent, position, tasklist'}
-            args['task']=kwargs['gtask']['id']
-            del(kwargs)
-            time.sleep(1)
-            result = self.service.tasks().move(*args).execute()
+            result = self.service.tasks().move(**kwargs).execute()
             return result
         except Exception, e:
             Log.error('[ee] Failed to move task : ' + str(e))
         return None
     
     def get_listID_from_tag(self, tag):
-        
-        try:
-            tids = self.datastore.get_all_tasks()
-            for tid in tids:
-                task = self.datastore.get_task(tid)
-                Log.debug('[dd] Looking for "' + tag + '" in ' + str(task.tags))
-                if tag in task.tags:
-                    localglistID = str(task.get_attribute('gtasklistID'))
-                    Log.debug('[ii] ggl Tasklist id attribute is ' + localglistID)
-                    return localglistID
-        except Exception, e:
-            Log.error('[ee] Could not get local data for tasklists : ' + str(e))
-    
-        time.sleep(1)
         tasklists=self.service.tasklists().list().execute()
         targetlist = tag.replace('@gtl_', '')
         for tasklist in tasklists['items']:
@@ -725,7 +691,6 @@ class Backend(PeriodicImportBackend):
             Log.debug("[ii] Google task not found in any lists : " + gtaskID)
             return False
         try:        
-            time.sleep(1)
             self.service.tasks().get(tasklist=gtasklist['id'], task=gtaskID).execute()
             return True
         except:
@@ -742,7 +707,6 @@ class Backend(PeriodicImportBackend):
         gtasklist=self.get_tasklist(gtask)
         modified_time = datetime.datetime.strptime('1970-01-01T00:00:01.000Z', "%Y-%m-%dT%H:%M:%S.%fZ" )
         try:
-            time.sleep(1)
             gtask_instance = self.service.tasks().get(tasklist=gtasklist['id'], task=gtask).execute()
             modified_time = datetime.datetime.strptime(gtask_instance['updated'], "%Y-%m-%dT%H:%M:%S.%fZ" )
         except:
@@ -930,7 +894,6 @@ class Backend(PeriodicImportBackend):
                     if (targetlist != gtasklist['title']) and (targetlist.replace('_', ' ') != gtasklist['title']):
                         Log.debug("[ii] looking for tasklist that matches tag " + t)
                         hasvalidtag = False
-                        time.sleep(1)
                         tasklists=self.service.tasklists().list().execute()
                         for tasklist in tasklists['items']:
                             if (targetlist == tasklist['title']) or (targetlist.replace('_', ' ') == tasklist['title']):
@@ -956,16 +919,10 @@ class Backend(PeriodicImportBackend):
         content = task.get_excerpt(strip_subtasks=False)               
         
         gtask['notes'] = content,              
-        
-        kwargs={'body':gtask, 'tasklist':gtasklist['id']}  
-        
-        
-        for p in task.parents:
-            if self.sync_engine.get_remote_id(p):
-                kwargs['parent'] = self.sync_engine.get_remote_id(p)      
                         
-        time.sleep(1)    
-        result = self.service.tasks().insert(**kwargs).execute()
+                        
+            
+        result = self.service.tasks().insert(tasklist = gtasklist['id'], body = gtask).execute()
         try: 
             task.set_attribute('gtaskID', result['id'])
 
@@ -985,7 +942,7 @@ class Backend(PeriodicImportBackend):
         @param task: a GTG Task (the whole thing too)...
         '''
         # FUTURE: Should try to set/update the parent if it moves in gtg...
-        kwargs = {'task':task, 'gtask':gtask}
+        kwargs = {}
         
         if 'gtasklistID' in gtask:
             gtasklist = {'id':gtask['gtasklistID'], 'title':gtask['gtasklistTitle']}
@@ -997,17 +954,15 @@ class Backend(PeriodicImportBackend):
             listtag = self.get_clean_tag_from_title(gtasklist['title'])
             kwargs['tasklist'] = gtasklist['id']
             
-        #newlisttag = self.get_list_tag(task)
+        newlisttag = self.get_list_tag(task)
         task = self.strip_list_tags(task)
-        """
         if (newlisttag is not None) and (newlisttag != listtag):
             tasklist = self.get_listID_from_tag(newlisttag)
             kwargs['tasklist'] = tasklist
             task.add_tag(newlisttag)
         else:
             task.add_tag(listtag)
-        """
-        task.add_tag(listtag)
+        
         title = task.get_title()
         gtask['title'] = title
         content = task.get_excerpt()
@@ -1017,28 +972,19 @@ class Backend(PeriodicImportBackend):
         due = task.get_due_date()
         if due != Date.no_date():
             gtask['due'] = due.strftime('%Y-%m-%dT%H:%M:%S.000Z' )
-            
-        time.sleep(1)
+    
         result = self.service.tasks().update(tasklist = gtasklist['id'], task = gtask['id'], body = gtask).execute()
         
         if 'gparent' in task.attributes:
             if self.sync_engine.get_local_id(task.attributes['gparent']) not in task.parents:
-                Log.debug('[ii] we need to move the task "' + gtask['title'] + '" under a new gparent')
-                for p in task.parents:
-                    if self.sync_engine.get_remote_id(p):
-                        kwargs['parent'] = p
-        elif 'parent' in gtask:
-            if self.sync_engine.get_local_id(gtask['parent']) not in task.parents:
                 Log.debug('[ii] we need to move the task "' + gtask['title'] + '" under a new parent')
                 for p in task.parents:
                     if self.sync_engine.get_remote_id(p):
                         kwargs['parent'] = p
-                    else:
-                        Log.debug('[ii] failed to move task under "' + gtask['parent'])
         
         if ('parent' in kwargs) or ('previous' in kwargs) or (kwargs['tasklist'] != gtasklist['id']):
             
-            result = self.move_gtask(**kwargs)
+            result = self.move_gtask(gtask, **kwargs)
             
             if result is not None:
                 try: 
@@ -1068,7 +1014,6 @@ class Backend(PeriodicImportBackend):
         self.sync_engine.break_relationship(remote_id = gtask)
         if meme.get_origin() == "GTG":
             gtasklist=self.get_tasklist(gtaskID)
-            time.sleep(1)
             self.service.tasks().delete(tasklist=gtasklist['id'], task=gtask).execute()
             
         else:
@@ -1122,7 +1067,6 @@ class Backend(PeriodicImportBackend):
                     if (targetlist != gtasklist['title']) and (targetlist.replace('_', ' ') != gtasklist['title']):
                         Log.debug("[ii] looking for tasklist that matches tag " + t)
                         hasvalidtag = False
-                        time.sleep(1)
                         tasklists=self.service.tasklists().list().execute()
                         for tasklist in tasklists['items']:
                             if (targetlist == tasklist['title']) or (targetlist.replace('_', ' ') == tasklist['title']):
